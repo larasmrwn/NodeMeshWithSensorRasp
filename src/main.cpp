@@ -14,6 +14,9 @@
 #include <DHT_U.h>
 #include "painlessMesh.h"
 #include <Arduino_JSON.h>
+#include <NTPClient.h>
+#include <WiFiUdp.h>
+#include <json.h>
 
 // MESH Details
 #define MESH_PREFIX "RNTMESH"        // name for your MESH
@@ -25,14 +28,29 @@
 // Initialize DHT sensor for normal 16mhz Arduino
 DHT dht(DHTPIN, DHTTYPE);
 
+// Define NTP Client to get time
+WiFiUDP ntpUDP;
+NTPClient timeClient(ntpUDP, "pool.ntp.org");
+
+// Variable to save current epoch time
+unsigned long epochTime;
+
 // Number for this node
-int nodeNumber = 1;
+int nodeNumber = 3;
 
 // String to send to other nodes with sensor readings
 String readings;
 
 Scheduler userScheduler; // to control your personal task
 painlessMesh mesh;
+
+// Function that gets current epoch time
+unsigned long getTime()
+{
+  timeClient.update();
+  unsigned long now = timeClient.getEpochTime();
+  return now;
+}
 
 // Init dht
 void initdht()
@@ -61,10 +79,24 @@ Task taskSendMessage(TASK_SECOND * 5, TASK_FOREVER, &sendMessage);
 String getReadings()
 {
   JSONVar jsonReadings;
+  // DynamicJsonDocument doc(100);
+  // JsonObject jsonReadings = doc.to<JsonObject>();
+  // jsonReadings["timestamp"] = getTime();
   jsonReadings["node"] = nodeNumber;
   jsonReadings["temp"] = dht.readTemperature();
   jsonReadings["hum"] = dht.readHumidity();
+  jsonReadings["soilhum"] = dht.readHumidity();
+  // JsonObject gps = jsonReadings.createNestedObject("gps");
+  JSONVar gps;
+  gps["lat"] = 12.2823;
+  gps["long"] = -34.23;
+
+  jsonReadings["gps"] = gps;
+
+  // String json_string;
+  // serializeJson(jsonReadings, json_string);
   readings = JSON.stringify(jsonReadings);
+
   return readings;
 }
 
@@ -94,17 +126,17 @@ void receivedCallback(uint32_t from, String &msg)
 
 void newConnectionCallback(uint32_t nodeId)
 {
-  // Serial.printf("New Connection, nodeId = %u\n", nodeId);
+  Serial.printf("New Connection, nodeId = %u\n", nodeId);
 }
 
 void changedConnectionCallback()
 {
-  // Serial.printf("Changed connections\n");
+  Serial.printf("Changed connections\n");
 }
 
 void nodeTimeAdjustedCallback(int32_t offset)
 {
-  // Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(), offset);
+  Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(), offset);
 }
 
 void setup()
