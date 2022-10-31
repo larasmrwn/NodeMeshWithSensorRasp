@@ -31,6 +31,10 @@ DHT dht(DHTPIN, DHTTYPE);
 
 int value;
 int address = 0;
+const int VhumMax = 405;
+const int VhumMin = 767;
+const int AnalogPin = A0;
+long output;
 
 void readEEPROM()
 {
@@ -39,6 +43,23 @@ void readEEPROM()
   value = EEPROM.read(address);
   Serial.print("Read Id = ");
   Serial.print(value, DEC);
+}
+
+int soilSensor(int VhumMin, int VhumMax)
+{
+  // put your main code here, to run repeatedly:
+  int sensorValue = analogRead(A0);
+  int val = map(sensorValue, VhumMin, VhumMax, 0, 100);
+  if (val > 100)
+  {
+    val = 100;
+  }
+  else if (val < 0)
+  {
+    val = 0;
+  };
+  return val;
+  // delay(100);
 }
 
 void receivedCallback(uint32_t from, String &msg);
@@ -50,6 +71,7 @@ Task myLoggingTask(10000, TASK_FOREVER, []()
                    {
   float h = dht.readHumidity();
   float t = dht.readTemperature();
+  int soilHumidity = soilSensor(VhumMin, VhumMax);
   DynamicJsonDocument msg(1024);
   DynamicJsonDocument test(1024);
   // JsonObject& msg = jsonBuffer.createObject();
@@ -57,7 +79,7 @@ Task myLoggingTask(10000, TASK_FOREVER, []()
   msg["idNode"] = value;
   msg["airTemp"] = t;
   msg["airHum"] = h;
-  msg["soilHum"] = h;
+  msg["soilHum"] = soilHumidity;
   test["lat"] = 12.345;
   test["long"] = -34.789;
   msg["gps"] = test;
