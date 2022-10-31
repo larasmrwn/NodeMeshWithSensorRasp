@@ -17,10 +17,11 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <json.h>
+#include <EEPROM.h>
 
 // MESH Details
-#define MESH_PREFIX "RNTMESH"        // name for your MESH
-#define MESH_PASSWORD "MESHpassword" // password for your MESH
+#define MESH_PREFIX "RNTMESH"        // name for MESH
+#define MESH_PASSWORD "MESHpassword" // password for MESH
 #define MESH_PORT 5555               // default port
 #define DHTPIN 5                     // Digital pin connected to the DHT sensor
 #define DHTTYPE DHT11                // DHT 11
@@ -28,138 +29,82 @@
 // Initialize DHT sensor for normal 16mhz Arduino
 DHT dht(DHTPIN, DHTTYPE);
 
-// Define NTP Client to get time
-WiFiUDP ntpUDP;
-NTPClient timeClient(ntpUDP, "pool.ntp.org");
+int value;
+int address = 0;
 
-// Variable to save current epoch time
-unsigned long epochTime;
+void readEEPROM()
+{
+  // read data from eeprom
 
-// Number for this node
-int nodeNumber = 3;
+  value = EEPROM.read(address);
+  Serial.print("Read Id = ");
+  Serial.print(value, DEC);
+}
 
-// String to send to other nodes with sensor readings
-String readings;
-
-Scheduler userScheduler; // to control your personal task
+void receivedCallback(uint32_t from, String &msg);
+Scheduler userScheduler;
 painlessMesh mesh;
-
-// Function that gets current epoch time
-unsigned long getTime()
-{
-  timeClient.update();
-  unsigned long now = timeClient.getEpochTime();
-  return now;
-}
-
-// Init dht
-void initdht()
-{
-  // Reading temperature or humidity takes about 250 milliseconds!
-  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+size_t logServerId = 0;
+// Send message to the logServer every 10 seconds
+Task myLoggingTask(10000, TASK_FOREVER, []()
+                   {
   float h = dht.readHumidity();
-  // Read temperature as Celsius
   float t = dht.readTemperature();
-
-  // Check if any reads failed and exit early (to try again).
-  if (isnan(h) || isnan(t))
-  {
-    Serial.println("Failed to read from DHT sensor!");
-    return;
-  }
-}
-
-// User stub
-void sendMessage();   // Prototype so PlatformIO doesn't complain
-String getReadings(); // Prototype for sending sensor readings
-
-// Create tasks: to send messages and get readings;
-Task taskSendMessage(TASK_SECOND * 5, TASK_FOREVER, &sendMessage);
-
-String getReadings()
-{
-  JSONVar jsonReadings;
-  // DynamicJsonDocument doc(100);
-  // JsonObject jsonReadings = doc.to<JsonObject>();
-  // jsonReadings["timestamp"] = getTime();
-  jsonReadings["node"] = nodeNumber;
-  jsonReadings["temp"] = dht.readTemperature();
-  jsonReadings["hum"] = dht.readHumidity();
-  jsonReadings["soilhum"] = dht.readHumidity();
-  // JsonObject gps = jsonReadings.createNestedObject("gps");
-  JSONVar gps;
-  gps["lat"] = 12.2823;
-  gps["long"] = -34.23;
-
-  jsonReadings["gps"] = gps;
-
-  // String json_string;
-  // serializeJson(jsonReadings, json_string);
-  readings = JSON.stringify(jsonReadings);
-
-  return readings;
-}
-
-void sendMessage()
-{
-  String msg = getReadings();
-  mesh.sendBroadcast(msg);
-}
-
-// Needed for painless library
-void receivedCallback(uint32_t from, String &msg)
-{
-  Serial.println(msg.c_str());
-  JSONVar myObject = JSON.parse(msg.c_str());
-  // int node = myObject["node"];
-  // double temp = myObject["temp"];
-  // double hum = myObject["hum"];
-  // Serial.print("Node: ");
-  // Serial.println(node);
-  // Serial.print("Temperature: ");
-  // Serial.print(temp);
-  // Serial.println(" C");
-  // Serial.print("Humidity: ");
-  // Serial.print(hum);
-  // Serial.println(" %");
-}
-
-void newConnectionCallback(uint32_t nodeId)
-{
-  Serial.printf("New Connection, nodeId = %u\n", nodeId);
-}
-
-void changedConnectionCallback()
-{
-  Serial.printf("Changed connections\n");
-}
-
-void nodeTimeAdjustedCallback(int32_t offset)
-{
-  Serial.printf("Adjusted time %u. Offset = %d\n", mesh.getNodeTime(), offset);
-}
+  DynamicJsonDocument msg(1024);
+  DynamicJsonDocument test(1024);
+  // JsonObject& msg = jsonBuffer.createObject();
+  // msg["nodename"] = "A2";  //change for identify for the node that send data mcu-t1 to mcu-t3
+  msg["idNode"] = value;
+  msg["airTemp"] = t;
+  msg["airHum"] = h;
+  msg["soilHum"] = h;
+  test["lat"] = 12.345;
+  test["long"] = -34.789;
+  msg["gps"] = test;
+  String str;
+  serializeJson(msg, str);
+  if (logServerId == 0) // If we don't know the logServer yet
+    mesh.sendBroadcast(str);
+  else
+    mesh.sendSingle(logServerId, str);
+  // log to serial
+  serializeJson(msg, Serial);
+  Serial.printf("\n"); });
 
 void setup()
 {
   Serial.begin(115200);
+  Serial.println("Begin DHT22 Mesh Network test!");
   dht.begin();
-  initdht();
-
-  // mesh.setDebugMsgTypes( ERROR | MESH_STATUS | CONNECTION | SYNC | COMMUNICATION | GENERAL | MSG_TYPES | REMOTE ); // all types on
-  mesh.setDebugMsgTypes(ERROR | STARTUP); // set before init() so that you can see startup messages
-
-  mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT);
+  EEPROM.begin(512);
+  readEEPROM();
+  mesh.setDebugMsgTypes(ERROR | STARTUP | CONNECTION); // set before init() so that you can see startup messages
+  mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 6);
   mesh.onReceive(&receivedCallback);
-  mesh.onNewConnection(&newConnectionCallback);
-  mesh.onChangedConnections(&changedConnectionCallback);
-  mesh.onNodeTimeAdjusted(&nodeTimeAdjustedCallback);
-
-  userScheduler.addTask(taskSendMessage);
-  taskSendMessage.enable();
+  // Add the task to the mesh scheduler
+  userScheduler.addTask(myLoggingTask);
+  myLoggingTask.enable();
 }
 
 void loop()
 {
-  // it will run the user scheduler as well
+  // put your main code here, to run repeatedly:
   mesh.update();
+}
+void receivedCallback(uint32_t from, String &msg)
+{
+  Serial.printf("logClient: Received from %u msg=%s\n", from, msg.c_str());
+  // Saving logServer
+  DynamicJsonDocument root(1024);
+  deserializeJson(root, msg);
+  if (root.containsKey("topic"))
+  {
+    if (String("logServer").equals(root["topic"].as<String>()))
+    {
+      // check for on: true or false
+      logServerId = root["nodeId"];
+      Serial.printf("logServer detected!!!\n");
+    }
+    Serial.printf("Handled from %u msg=%s\n", from, msg.c_str());
+  }
 }
