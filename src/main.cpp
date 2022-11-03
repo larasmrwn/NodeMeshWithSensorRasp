@@ -20,7 +20,7 @@
 #include <EEPROM.h>
 
 // MESH Details
-#define MESH_PREFIX "RNTMESH"        // name for MESH
+#define MESH_PREFIX "AlphaMesh"      // name for MESH
 #define MESH_PASSWORD "MESHpassword" // password for MESH
 #define MESH_PORT 5555               // default port
 #define DHTPIN 5                     // Digital pin connected to the DHT sensor
@@ -101,7 +101,7 @@ void setup()
   EEPROM.begin(512);
   readEEPROM();
   mesh.setDebugMsgTypes(ERROR | STARTUP | CONNECTION); // set before init() so that you can see startup messages
-  mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 6);
+  mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 6, PHY_MODE_11G);
   mesh.onReceive(&receivedCallback);
   // Add the task to the mesh scheduler
   userScheduler.addTask(myLoggingTask);
