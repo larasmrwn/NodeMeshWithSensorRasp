@@ -22,6 +22,7 @@
 // MESH Details
 #define MESH_PREFIX "AlphaMesh"      // name for MESH
 #define MESH_PASSWORD "MESHpassword" // password for MESH
+#define WIFI_CHANNEL 6               // WiFi Channel
 #define MESH_PORT 5555               // default port
 #define DHTPIN 5                     // Digital pin connected to the DHT sensor
 #define DHTTYPE DHT11                // DHT 11
@@ -34,7 +35,7 @@ int address = 0;
 const int VhumMax = 405;
 const int VhumMin = 767;
 const int AnalogPin = A0;
-long output;
+// long output;
 
 void readEEPROM()
 {
@@ -66,8 +67,9 @@ void receivedCallback(uint32_t from, String &msg);
 Scheduler userScheduler;
 painlessMesh mesh;
 size_t logServerId = 0;
+int counter = 0;
 // Send message to the logServer every 10 seconds
-Task myLoggingTask(10000, TASK_FOREVER, []()
+Task myLoggingTask((60000 + random(1000, 5000)), TASK_FOREVER, []()
                    {
   float h = dht.readHumidity();
   float t = dht.readTemperature();
@@ -77,18 +79,25 @@ Task myLoggingTask(10000, TASK_FOREVER, []()
   // JsonObject& msg = jsonBuffer.createObject();
   // msg["nodename"] = "A2";  //change for identify for the node that send data mcu-t1 to mcu-t3
   msg["idNode"] = value;
-  msg["airTemp"] = t;
-  msg["airHum"] = h;
+  msg["airTemp"] = serialized(String(t,2));
+  msg["airHum"] = serialized(String(h,2));
   msg["soilHum"] = soilHumidity;
+  msg["msgId"] = counter;
   test["lat"] = 12.345;
   test["long"] = -34.789;
   msg["gps"] = test;
   String str;
   serializeJson(msg, str);
-  if (logServerId == 0) // If we don't know the logServer yet
+  if (logServerId == 0){
+     // If we don't know the logServer yet
     mesh.sendBroadcast(str);
+    counter++;
+  }
   else
+  {
     mesh.sendSingle(logServerId, str);
+    counter++;
+  }
   // log to serial
   serializeJson(msg, Serial);
   Serial.printf("\n"); });
@@ -101,7 +110,7 @@ void setup()
   EEPROM.begin(512);
   readEEPROM();
   mesh.setDebugMsgTypes(ERROR | STARTUP | CONNECTION); // set before init() so that you can see startup messages
-  mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, 6, PHY_MODE_11G);
+  mesh.init(MESH_PREFIX, MESH_PASSWORD, &userScheduler, MESH_PORT, WIFI_AP_STA, WIFI_CHANNEL, PHY_MODE_11G);
   mesh.onReceive(&receivedCallback);
   // Add the task to the mesh scheduler
   userScheduler.addTask(myLoggingTask);
