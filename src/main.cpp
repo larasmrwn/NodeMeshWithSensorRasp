@@ -66,11 +66,12 @@ int soilSensor(int VhumMin, int VhumMax)
 void receivedCallback(uint32_t from, String &msg);
 Scheduler userScheduler;
 painlessMesh mesh;
+void myLoggingTaskCB();
 size_t logServerId = 0;
 int counter = 0;
 // Send message to the logServer every 10 seconds
-Task myLoggingTask((60000 + random(1000, 5000)), TASK_FOREVER, []()
-                   {
+Task myLoggingTask(1 * TASK_HOUR, TASK_FOREVER, &myLoggingTaskCB, &userScheduler);
+void myLoggingTaskCB() {
   float h = dht.readHumidity();
   float t = dht.readTemperature();
   int soilHumidity = soilSensor(VhumMin, VhumMax);
@@ -100,7 +101,8 @@ Task myLoggingTask((60000 + random(1000, 5000)), TASK_FOREVER, []()
   }
   // log to serial
   serializeJson(msg, Serial);
-  Serial.printf("\n"); });
+  Serial.printf("\n"); 
+  }
 
 void setup()
 {
