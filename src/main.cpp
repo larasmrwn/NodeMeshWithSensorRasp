@@ -70,7 +70,7 @@ void myLoggingTaskCB();
 size_t logServerId = 0;
 int counter = 0;
 // Send message to the logServer every 10 seconds
-Task myLoggingTask(1 * TASK_HOUR, TASK_FOREVER, &myLoggingTaskCB, &userScheduler);
+Task myLoggingTask(1 * TASK_HOUR + (random(10, 25) * TASK_SECOND), TASK_FOREVER, &myLoggingTaskCB, &userScheduler);
 void myLoggingTaskCB() {
   float h = dht.readHumidity();
   float t = dht.readTemperature();
